@@ -5,11 +5,16 @@ Transparent UDP proxy over LoRa.
 
 Each side exposes local UDP ports that mirror endpoints on the other side.
 The proxy multiplexes all traffic through the single LoRa RF link by
-prepending a 2-byte destination port header to every payload.
+prepending a 4-byte header to every payload.
 
 Wire format (LoRa payload):
-  [dest_port: 2B big-endian][original payload: up to 238B]
+  [dest_port: 2B big-endian][src_port: 2B big-endian][original payload: up to 236B]
   total max: 240B (LoRa hardware buffer limit)
+
+src_port is carried so the receiving side can reconstruct a proper UDP packet,
+allowing request-response patterns where the remote endpoint replies to the
+original source port. If a reply port is not listed in expose_ports, replies
+on that port are simply not routed (opt-in per config).
 
 Usage:
   python3 lora_proxy.py --config config_station.yaml
@@ -29,25 +34,26 @@ logging.basicConfig(
 )
 log = logging.getLogger("lora_proxy")
 
-MAX_PAYLOAD = 238   # 240 byte LoRa limit minus 2 byte port header
-HEADER_SIZE = 2     # dest_port: uint16 big-endian
+MAX_PAYLOAD = 236   # 240 byte LoRa limit minus 4 byte header
+HEADER_FORMAT = ">HH"
+HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # 4 bytes
 
 
-def pack_wire(dest_port: int, payload: bytes) -> bytes:
-    """Prepend 2-byte destination port to payload."""
-    return struct.pack(">H", dest_port) + payload
+def pack_wire(dest_port: int, src_port: int, payload: bytes) -> bytes:
+    """Prepend dest_port + src_port header to payload."""
+    return struct.pack(HEADER_FORMAT, dest_port, src_port) + payload
 
 
 def unpack_wire(data: bytes):
     """
-    Extract (dest_port, payload) from wire bytes.
+    Extract (dest_port, src_port, payload) from wire bytes.
     Returns None if data is too short.
     """
     if len(data) < HEADER_SIZE:
         return None
-    dest_port = struct.unpack(">H", data[:HEADER_SIZE])[0]
+    dest_port, src_port = struct.unpack(HEADER_FORMAT, data[:HEADER_SIZE])
     payload = data[HEADER_SIZE:]
-    return dest_port, payload
+    return dest_port, src_port, payload
 
 
 class LoraProxy:
@@ -114,9 +120,8 @@ class LoraProxy:
     def _app_rx_loop(self, local_port: int, sock: socket.socket):
         """
         Receive UDP from a local app on local_port.
-        Find the corresponding remote_port, wrap with header, send to LoRa module.
+        Wrap with [dest_port][src_port] header, send to LoRa module.
         """
-        # find remote_port for this local_port
         remote_port = None
         for mapping in self._expose:
             if mapping["local_port"] == local_port:
@@ -138,17 +143,22 @@ class LoraProxy:
                 )
                 continue
 
-            wire = pack_wire(remote_port, data)
+            src_port = addr[1]
+            wire = pack_wire(remote_port, src_port, data)
             try:
                 self._lora_sock.sendto(wire, (self._lora_ip, self._lora_send_port))
-                log.debug(f"[app-rx-{local_port}] {len(data)}B -> LoRa (dest_port={remote_port})")
+                log.debug(
+                    f"[app-rx-{local_port}] {len(data)}B -> LoRa "
+                    f"(dest={remote_port} src={src_port})"
+                )
             except Exception as e:
                 log.warning(f"[app-rx-{local_port}] send to LoRa failed: {e}")
 
     def _lora_rx_loop(self):
         """
         Receive UDP from the LoRa module.
-        Unpack the 2-byte dest_port header, forward payload to the right local app socket.
+        Unpack [dest_port][src_port] header, forward payload to the right local
+        app socket using src_port as the source so replies go to the right place.
         """
         log.info("[lora-rx] listening")
 
@@ -164,7 +174,7 @@ class LoraProxy:
                 log.warning(f"[lora-rx] malformed packet ({len(data)}B), dropped")
                 continue
 
-            dest_port, payload = result
+            dest_port, src_port, payload = result
 
             if dest_port not in self._remote_to_local:
                 log.warning(f"[lora-rx] unknown dest_port={dest_port}, dropped")
@@ -174,9 +184,13 @@ class LoraProxy:
             sock = self._app_sockets[local_port]
 
             try:
-                # Forward to localhost on the destination port
+                # Reconstruct the packet with the original source port so the
+                # receiving app can reply to it if needed.
                 sock.sendto(payload, ("127.0.0.1", dest_port))
-                log.debug(f"[lora-rx] {len(payload)}B -> localhost:{dest_port}")
+                log.debug(
+                    f"[lora-rx] {len(payload)}B -> localhost:{dest_port} "
+                    f"(original src={src_port})"
+                )
             except Exception as e:
                 log.warning(f"[lora-rx] forward to :{dest_port} failed: {e}")
 
