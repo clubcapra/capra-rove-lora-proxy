@@ -1,0 +1,14 @@
+
+Selon Denis, les deux agissent comme both un serveur et un client TCP
+
+Dabord, il faut setup les lora via une interface web accessible via l'ip par defaut.
+
+Par exemple, imaginons quon veut enovyer message de ordinateur A conncte a lora 1 a ordinateur B connecte a lora 2
+
+Ordinateur A envoie un message a l'adresse IP de Lora 1, qui agit comme serveur TCP. (je pense?) DE laur ebord, il faut un serveur TCP qui ecoute
+or some shit like that idk voici ce que denis a dit:
+```
+les deux agissent comme serveur tcp
+les deux noeuds sont des clients
+quand tenvoie un message dun client a un serveur, lautre lora agit comme serveur, va enovyer un message a l'autre client 
+```

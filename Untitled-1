@@ -1,0 +1,9 @@
+
+/nuage_point
+Format: PointCloud2
+Message frequency: 1Hz
+
+/position_orientation_robot:
+Format: Transform
+Frquency: 2Hz
+

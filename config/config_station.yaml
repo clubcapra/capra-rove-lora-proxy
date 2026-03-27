@@ -1,0 +1,14 @@
+# Station side config
+# This machine IP: 192.168.2.201
+
+# The LoRa module physically connected to this machine
+lora_module_ip: 192.168.2.13
+lora_send_port: 505       # module's local port — we send TO this
+lora_recv_port: 507       # module forwards received RF traffic TO us on this port
+
+# Ports this proxy exposes locally.
+# local_port  = any app on this machine sends UDP here
+# remote_port = where it will arrive on the ROVE side
+expose_ports:
+  - local_port: 6000      # station app hits localhost:6000
+    remote_port: 6000     # arrives at rove proxy -> robot:6000
