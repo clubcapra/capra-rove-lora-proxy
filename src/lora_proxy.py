@@ -55,8 +55,7 @@ class LoraProxy:
         self._lora_send_port = cfg["lora_send_port"]
         self._lora_recv_port = cfg["lora_recv_port"]
 
-        # set of ports this proxy listens on / delivers to
-        self._ports: list[int] = cfg.get("ports", [])
+        self._ports: list[int] = cfg.get("ports") or []
 
         # port -> socket bound to that port (listens for outbound app traffic)
         self._app_sockets: dict[int, socket.socket] = {}
@@ -68,14 +67,16 @@ class LoraProxy:
         log.info(f"LoRa module at {self._lora_ip}:{self._lora_send_port}")
 
         # unbound socket used only to forward inbound payloads to local apps
-        # avoids any conflict with app_sockets
         self._fwd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
         for port in self._ports:
             sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             sock.bind(("0.0.0.0", port))
             self._app_sockets[port] = sock
-            log.info(f"  listening on :{port}")
+            log.info(f"  intercepting outbound on :{port}")
+
+        if not self._ports:
+            log.info("  no outbound ports configured (receive-only mode)")
 
     def start(self):
         for port, sock in self._app_sockets.items():
@@ -110,32 +111,50 @@ class LoraProxy:
                 continue
 
             wire = pack_wire(port, data)
+            log.info(
+                f"[app->lora] received {len(data)}B from {addr[0]}:{addr[1]} "
+                f"on :{port} — sending to LoRa with dest_port={port}"
+            )
             try:
                 self._lora_sock.sendto(wire, (self._lora_ip, self._lora_send_port))
-                log.debug(f"[app-rx-{port}] {len(data)}B -> LoRa")
+                log.info(
+                    f"[app->lora] {len(wire)}B sent to LoRa module "
+                    f"{self._lora_ip}:{self._lora_send_port}"
+                )
             except Exception as e:
-                log.warning(f"[app-rx-{port}] send to LoRa failed: {e}")
+                log.warning(f"[app->lora] send to LoRa failed: {e}")
 
     def _lora_rx_loop(self):
+        """LoRa sends packet — unwrap and deliver to local app on dest_port."""
         log.info("[lora-rx] ready")
         while True:
             try:
-                data, _ = self._lora_sock.recvfrom(4096)
+                data, addr = self._lora_sock.recvfrom(4096)
             except Exception as e:
                 log.warning(f"[lora-rx] recv error: {e}")
                 continue
 
+            log.info(
+                f"[lora->app] received {len(data)}B from LoRa "
+                f"({addr[0]}:{addr[1]})"
+            )
+
             result = unpack_wire(data)
             if result is None:
-                log.warning(f"[lora-rx] malformed packet, dropped")
+                log.warning(f"[lora->app] malformed packet (too short), dropped")
                 continue
 
             dest_port, payload = result
+            log.info(
+                f"[lora->app] dest_port={dest_port} payload={len(payload)}B "
+                f"— forwarding to localhost:{dest_port}"
+            )
+
             try:
                 self._fwd_sock.sendto(payload, ("127.0.0.1", dest_port))
-                log.debug(f"[lora-rx] {len(payload)}B -> localhost:{dest_port}")
+                log.info(f"[lora->app] delivered {len(payload)}B to localhost:{dest_port}")
             except Exception as e:
-                log.warning(f"[lora-rx] forward to :{dest_port} failed: {e}")
+                log.warning(f"[lora->app] forward to :{dest_port} failed: {e}")
 
 
 def main():
