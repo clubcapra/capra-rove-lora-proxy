@@ -14,6 +14,8 @@ Wire format:
 Usage:
   python3 lora_proxy.py --config config_station.yaml
   python3 lora_proxy.py --config config_rove.yaml
+
+  Add --verbose to log every packet (useful for debugging, noisy in production).
 """
 
 import socket
@@ -32,6 +34,9 @@ log = logging.getLogger("lora_proxy")
 MAX_PAYLOAD = 238
 HEADER_FORMAT = ">H"
 HEADER_SIZE = struct.calcsize(HEADER_FORMAT)  # 2 bytes
+
+# Set to True via --verbose flag to log every packet
+VERBOSE = False
 
 
 def pack_wire(dest_port: int, payload: bytes) -> bytes:
@@ -98,61 +103,56 @@ class LoraProxy:
 
     def _app_rx_loop(self, port: int, sock: socket.socket):
         """App sends to proxy:port — wrap and forward to LoRa."""
-        log.info(f"[app-rx-{port}] ready")
         while True:
             try:
                 data, addr = sock.recvfrom(4096)
             except Exception as e:
-                log.warning(f"[app-rx-{port}] recv error: {e}")
+                log.warning(f"[app->lora] recv error on :{port}: {e}")
                 continue
 
             if len(data) > MAX_PAYLOAD:
-                log.warning(f"[app-rx-{port}] {len(data)}B exceeds {MAX_PAYLOAD}B, dropped")
+                log.warning(
+                    f"[app->lora] packet from {addr[0]}:{addr[1]} "
+                    f"too large ({len(data)}B > {MAX_PAYLOAD}B), dropped"
+                )
                 continue
 
             wire = pack_wire(port, data)
-            log.info(
-                f"[app->lora] received {len(data)}B from {addr[0]}:{addr[1]} "
-                f"on :{port} — sending to LoRa with dest_port={port}"
-            )
             try:
                 self._lora_sock.sendto(wire, (self._lora_ip, self._lora_send_port))
-                log.info(
-                    f"[app->lora] {len(wire)}B sent to LoRa module "
-                    f"{self._lora_ip}:{self._lora_send_port}"
-                )
+                if VERBOSE:
+                    log.info(
+                        f"[app->lora] {len(data)}B from {addr[0]}:{addr[1]} "
+                        f"on :{port} -> LoRa (dest_port={port})"
+                    )
             except Exception as e:
                 log.warning(f"[app->lora] send to LoRa failed: {e}")
 
     def _lora_rx_loop(self):
         """LoRa sends packet — unwrap and deliver to local app on dest_port."""
-        log.info("[lora-rx] ready")
         while True:
             try:
                 data, addr = self._lora_sock.recvfrom(4096)
             except Exception as e:
-                log.warning(f"[lora-rx] recv error: {e}")
+                log.warning(f"[lora->app] recv error: {e}")
                 continue
-
-            log.info(
-                f"[lora->app] received {len(data)}B from LoRa "
-                f"({addr[0]}:{addr[1]})"
-            )
 
             result = unpack_wire(data)
             if result is None:
-                log.warning(f"[lora->app] malformed packet (too short), dropped")
+                log.warning(
+                    f"[lora->app] malformed packet from {addr[0]}:{addr[1]} "
+                    f"({len(data)}B), dropped"
+                )
                 continue
 
             dest_port, payload = result
-            log.info(
-                f"[lora->app] dest_port={dest_port} payload={len(payload)}B "
-                f"— forwarding to localhost:{dest_port}"
-            )
-
             try:
                 self._fwd_sock.sendto(payload, ("127.0.0.1", dest_port))
-                log.info(f"[lora->app] delivered {len(payload)}B to localhost:{dest_port}")
+                if VERBOSE:
+                    log.info(
+                        f"[lora->app] {len(payload)}B from {addr[0]}:{addr[1]} "
+                        f"-> localhost:{dest_port}"
+                    )
             except Exception as e:
                 log.warning(f"[lora->app] forward to :{dest_port} failed: {e}")
 
@@ -160,7 +160,14 @@ class LoraProxy:
 def main():
     parser = argparse.ArgumentParser(description="LoRa transparent UDP proxy")
     parser.add_argument("--config", required=True, help="Path to YAML config file")
+    parser.add_argument("--verbose", action="store_true", help="Log every packet")
     args = parser.parse_args()
+
+    global VERBOSE
+    VERBOSE = args.verbose
+
+    if VERBOSE:
+        log.info("Verbose packet logging enabled")
 
     proxy = LoraProxy(args.config)
     try:
