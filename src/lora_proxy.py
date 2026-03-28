@@ -117,7 +117,6 @@ class LoraProxy:
                 log.warning(f"[app-rx-{port}] send to LoRa failed: {e}")
 
     def _lora_rx_loop(self):
-        """LoRa sends packet — unwrap and deliver to local app on dest_port."""
         log.info("[lora-rx] ready")
         while True:
             try:
@@ -132,11 +131,6 @@ class LoraProxy:
                 continue
 
             dest_port, payload = result
-
-            if dest_port not in self._app_sockets:
-                log.warning(f"[lora-rx] dest_port={dest_port} not in config, dropped")
-                continue
-
             try:
                 self._fwd_sock.sendto(payload, ("127.0.0.1", dest_port))
                 log.debug(f"[lora-rx] {len(payload)}B -> localhost:{dest_port}")

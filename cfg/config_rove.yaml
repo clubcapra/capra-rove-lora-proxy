@@ -3,4 +3,3 @@ lora_send_port: 504
 lora_recv_port: 506
 
 ports:
-  - 6000
