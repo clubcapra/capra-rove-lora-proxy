@@ -87,6 +87,54 @@ python3 lora_proxy.py --config config_station.yaml --verbose
 By default only warnings and errors are logged. Use `--verbose` to see every
 packet flowing through — useful during initial testing, too noisy for production.
 
+## Setup the Services
+
+> Do this on both the deck and the Pi.
+
+### Steps
+
+- 1. Set up passwordless sudo for `capra`
+
+Add the following line at the end of `/etc/sudoers`:
+```
+capra ALL=(ALL:ALL) NOPASSWD: ALL
+```
+
+Edit the sudoers file safely with:
+```bash
+sudo visudo
+```
+
+- 2. Create the systemd service file
+```bash
+sudo nano /etc/systemd/system/lora_proxy.service
+```
+
+Paste the content of the `lora_proxy.service` file. 
+In the `ExecStart` line, specify your config file path.
+
+- 3. Reload and enable the service
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable lora_proxy.service
+```
+
+- 4. Check the status
+```bash
+sudo systemctl status lora_proxy.service
+```
+
+## Update the Service
+
+- 1. Update the port in the config file
+
+Reflect the new port in the `port` section of your config file.
+
+- 2. Restart the service
+```bash
+sudo systemctl restart lora_proxy.service
+```
+
 ## Future additions
 
 - **Timestamp validation** — drop stale packets at the application layer, not here
