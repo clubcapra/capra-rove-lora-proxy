@@ -1,0 +1,16 @@
+[Unit]
+Description=Lora Proxy Service
+After=network.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=capra
+ExecStart=/usr/bin/sudo /usr/bin/python3 /home/capra/Repos/capra-rove-lora-proxy/src/lora_proxy.py --config /home/capra/Repos/capra-rove-lora-proxy/cfg/config_[station|rove].yaml
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

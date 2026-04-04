@@ -1,0 +1,6 @@
+lora_module_ip: 192.168.2.12
+lora_send_port: 504
+lora_recv_port: 506
+
+ports:
+  - 6001
