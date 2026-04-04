@@ -141,3 +141,18 @@ sudo systemctl restart lora_proxy.service
 - **HMAC on specific ports** — add per-port signing in the application layer
 - **Source port preservation** — requires raw sockets and root, implement only if
   request-response patterns are needed
+
+
+## Link health check (marco/polo)
+
+Send `"marco"` to `proxy:7000` from a bound socket. Replies `"polo"` if the other proxy responds over LoRa, or `"timeout 10s"` after 10 seconds.
+```python
+import socket
+s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+s.bind(('0.0.0.0', 9999))   # must bind — proxy replies to your source port
+s.settimeout(12)
+s.sendto(b'marco', ('127.0.0.1', 7000))
+print(s.recvfrom(1024)[0].decode())
+```
+
+Ports `0` and `1` are reserved internally for ping/pong and never routed to apps.
