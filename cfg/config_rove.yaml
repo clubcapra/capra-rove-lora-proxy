@@ -4,3 +4,8 @@ lora_recv_port: 506
 
 ports:
   - 6001
+  - 5540 # cam control
+  - 6100 # cmd_vel
+  - 6101 # enable
+  - 6102 # estop
+  - 6103 # flippers
