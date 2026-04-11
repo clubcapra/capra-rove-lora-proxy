@@ -10,7 +10,7 @@ start = time.time()
 
 for i in range(total):
     sock.sendto(payload, ('192.168.2.13', 505))
-    #time.sleep(1 / 30)
+    time.sleep(1 / 1)
 
 elapsed = time.time() - start
 print(f"sent {total} packets in {elapsed:.2f}s ({total*len(payload)/elapsed:.0f} bytes/sec)")
