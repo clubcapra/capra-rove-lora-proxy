@@ -1,4 +1,3 @@
-python
 # test_proxy.py
 from lora_proxy import pack_wire, unpack_wire, MAX_PAYLOAD
 
