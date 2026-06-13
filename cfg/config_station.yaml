@@ -3,9 +3,7 @@ lora_send_port: 505
 lora_recv_port: 507
 
 ports:
-  - 6000
+  - 6000 # debugging
   - 5540 # cam control
-  - 6100 # cmd_vel
-  - 6101 # enable
-  - 6102 # estop
-  - 6103 # flippers
+  - 7003 # multiplexer 1
+  - 7006 # multiplexer 2
